@@ -1,5 +1,5 @@
 /* Sultan service worker: keeps the app shell, fonts and viewed photos available offline. */
-const VERSION = "sultan-v1";
+const VERSION = "sultan-v2";
 const SHELL = ["./", "./index.html", "./config.js", "./shim.js", "./vendor/supabase.js", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
@@ -18,7 +18,8 @@ self.addEventListener("fetch", (e) => {
 
   // App files: network first so updates arrive, cache as the offline fallback.
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then((res) => {
+    // bypass the browser's HTTP cache (GitHub Pages caches for 10 minutes) so new versions show up at once
+    e.respondWith(fetch(req, { cache: "no-store" }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match("./index.html"))));
