@@ -517,6 +517,11 @@ html:root[data-ui="dark"]{--bg:#0f151b; --surface:#17202a; --ink:#e6edf3; --mute
         <button id="m-week" aria-pressed="false">Weekly</button>
         <button id="m-month" aria-pressed="true">Monthly</button>
       </div>
+      <div class="seg" role="group" aria-label="Show amounts in" id="dispcur">
+        <button data-c="USD" aria-pressed="true">$ USD</button>
+        <button data-c="CHF" aria-pressed="false">CHF</button>
+        <button data-c="EUR" aria-pressed="false">€ EUR</button>
+      </div>
       <div class="nav">
         <button id="prev" aria-label="Previous period">‹</button>
         <span class="label" id="plabel">—</span>
@@ -587,6 +592,7 @@ html:root[data-ui="dark"]{--bg:#0f151b; --surface:#17202a; --ink:#e6edf3; --mute
               <span class="seg" role="group" aria-label="Currency entered">
                 <button type="button" id="cur-chf" aria-pressed="true">CHF</button>
                 <button type="button" id="cur-usd" aria-pressed="false">USD</button>
+                <button type="button" id="cur-eur" aria-pressed="false">EUR</button>
               </span>
             </span>
           </label>
@@ -613,6 +619,7 @@ html:root[data-ui="dark"]{--bg:#0f151b; --surface:#17202a; --ink:#e6edf3; --mute
             <label class="full" style="grid-column:1/-1">CHF per 1 USD<input id="s-rate" type="number" min="0.01" step="0.0001" inputmode="decimal"></label>
             <label>Monthly cap (USD)<input id="s-cap" type="number" min="0" step="1" inputmode="decimal"></label>
             <label>Cap with extra (USD)<input id="s-ext" type="number" min="0" step="1" inputmode="decimal"></label>
+            <label style="grid-column:1/-1">EUR per 1 USD<input id="s-eur" type="number" min="0.01" step="0.0001" inputmode="decimal"></label>
             <label style="grid-column:1/-1">Weekly cap (CHF)<input id="s-wcap" type="number" min="0" step="1" inputmode="decimal"></label>
             <p class="note" style="grid-column:1/-1">The rate applies to new expenses; saved ones keep the rate they were entered at. The weekly extra budget grows from the weekly cap in the same ratio as the monthly budgets (10,000 ÷ 7,000).</p>
             <p class="msg" id="s-msg" style="grid-column:1/-1" role="status"></p>
@@ -675,7 +682,8 @@ const color=id=>`var(--c-${catOf(id)})`;
 const cname=id=>CAT[catOf(id)].name;
 const $=id=>document.getElementById(id);
 
-const DEF={rate:0.82,cap:7000,ext:10000,wcapChf:1500};
+const DEF={rate:0.82,eurRate:0.89,cap:7000,ext:10000,wcapChf:1500};
+let dispCur="USD";try{const c=localStorage.getItem("sultan-dispcur");if(["USD","CHF","EUR"].includes(c))dispCur=c}catch(e){}
 let expenses=[], settings={...DEF}, mode="month", anchor=today(), db=null, local=false, showAll=false, catFilter="", entryCur="CHF";
 
 /* ---------- dates ---------- */
@@ -701,7 +709,13 @@ function label(m,r,short){
 
 /* ---------- money & budgets ---------- */
 const USD=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}), USD0=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
-const fmt=(n,dec)=>(dec===0?USD0:USD).format(n);
+// amounts are stored in USD; show them in the chosen currency
+const rateOf=c=>c==="CHF"?(+settings.rate||DEF.rate):c==="EUR"?(+settings.eurRate||DEF.eurRate):1;
+const NF={};const nf=(c,d)=>NF[c+d]||(NF[c+d]=new Intl.NumberFormat("en-US",{style:"currency",currency:c,minimumFractionDigits:d,maximumFractionDigits:d}));
+const fmt=(n,dec)=>nf(dispCur,dec===0?0:2).format(n*rateOf(dispCur));
+const fmtIn=(c,n,dec)=>nf(c,dec===0?0:2).format(n);
+const fmtUsd=(n,dec)=>nf("USD",dec===0?0:2).format(n);
+const capLbl=v=>fmt(v,0)+(dispCur!=="USD"?" ("+fmtUsd(v,0)+")":"");
 const fmtChf=n=>"CHF "+n.toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2});
 const budgets=m=>{const cap=+settings.cap||0,ext=+settings.ext||0;if(m!=="week")return{cap,ext};
   const wc=+settings.wcapChf>0?settings.wcapChf/(+settings.rate||DEF.rate):cap*12/52;return{cap:wc,ext:cap?wc*ext/cap:wc}};
@@ -749,7 +763,7 @@ function render(){
   $("plabel").textContent=label(mode,r);
   $("next").disabled=isCurrent||isFuture;
   $("exbanner").hidden=!expenses.some(e=>e.example);
-  $("ratelbl").textContent=`${(+settings.rate).toFixed(2)} CHF = $1`;
+  $("ratelbl").textContent=`$1 = CHF ${(+settings.rate).toFixed(2)} = €${(+settings.eurRate).toFixed(2)}`;
 
   // summary
   $("sumpanel").className="panel sumpanel"+(D?"":" s-"+st);
@@ -775,8 +789,9 @@ function render(){
   $("b-proj").style.width=isCurrent?P(proj)+"%":"0%";
   $("b-ticks").innerHTML=(B.cap?`<span style="left:${P(B.cap)}%">cap ${esc(fmt(B.cap,0))}</span>`:"")+(B.ext?`<span style="left:${P(B.ext)}%">extra ${esc(fmt(B.ext,0))}</span>`:"");
   const per=mode==="week"?"week":"month";
-  $("l-cap-k").textContent=`Left under ${fmt(B.cap,0)} cap`;
-  $("l-ext-k").textContent=`Left under ${fmt(B.ext,0)} with extra`;
+  $("l-cap-k").textContent=`Left under ${capLbl(B.cap)} cap`;
+  $("l-ext-k").textContent=`Left under ${capLbl(B.ext)} with extra`;
+  $("dispcur").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.c===dispCur));
   const lc=B.cap-total, le=B.ext-total;
   $("l-cap").textContent=leftTxt(lc);$("l-cap").className="v"+(lc<0?" neg":"");
   $("l-ext").textContent=leftTxt(le);$("l-ext").className="v"+(le<0?" neg":"");
@@ -879,7 +894,7 @@ function renderLedger(cur,r){
   const dayTot={};for(const e of list)dayTot[e.date]=(dayTot[e.date]||0)+e.amount;
   for(const e of shown){
     if(e.date!==last){last=e.date;html+=`<li class="day"><span>${esc(parse(e.date).toLocaleDateString("en-US",{weekday:"short",day:"numeric",month:"short"}))}</span><span class="num">${esc(fmt(dayTot[e.date]))}</span></li>`}
-    const orig=e.orig&&e.orig.currency==="CHF"?`<small>${esc(fmtChf(+e.orig.amount))}</small>`:"";
+    const oc=e.orig&&e.orig.currency, orig=oc&&oc!==dispCur?`<small>${esc(fmtIn(oc,+e.orig.amount))}</small>`:(!oc&&dispCur!=="USD"?`<small>${esc(fmtUsd(e.amount))}</small>`:"");
     html+=`<li class="tx"><span class="dot" style="background:${color(e.category)}"></span>
       <span class="what"><span>${esc(e.note||cname(e.category))}${e.example?'<span class="tag">example</span>':""}</span><span>${esc(cname(e.category))}</span></span>
       <span class="a">${esc(fmt(e.amount))}${orig}</span>
@@ -894,7 +909,7 @@ const LKEY="spendbook-local-v2";
 function loadLocal(){try{const j=JSON.parse(localStorage.getItem(LKEY)||"{}");expenses=j.expenses||[];settings={...settings,...(j.settings||{})}}catch(e){}}
 function saveLocal(){try{localStorage.setItem(LKEY,JSON.stringify({expenses,settings}))}catch(e){}}
 function norm(d){const x=d.data();return{id:d.id,amount:+x.amount||0,orig:x.orig||null,category:x.category,date:x.date,note:x.note||"",example:!!x.example,createdAt:x.createdAt||""}}
-function fillSettings(){$("s-rate").value=settings.rate;$("s-cap").value=settings.cap;$("s-ext").value=settings.ext;$("s-wcap").value=settings.wcapChf;updateConv()}
+function fillSettings(){$("s-eur").value=settings.eurRate;$("s-rate").value=settings.rate;$("s-cap").value=settings.cap;$("s-ext").value=settings.ext;$("s-wcap").value=settings.wcapChf;updateConv()}
 
 async function addExpense(e){
   if(local){e.id="l"+Date.now().toString(36);expenses.push(e);saveLocal();render();return}
@@ -906,7 +921,7 @@ async function delExpense(id){
 }
 async function saveSettings(){
   if(local){saveLocal();render();return}
-  await db.doc("settings/main").set({rate:+settings.rate,cap:+settings.cap,ext:+settings.ext,wcapChf:+settings.wcapChf});
+  await db.doc("settings/main").set({rate:+settings.rate,eurRate:+settings.eurRate,cap:+settings.cap,ext:+settings.ext,wcapChf:+settings.wcapChf});
 }
 
 async function connect(){
@@ -917,10 +932,10 @@ async function connect(){
   db.collection("expenses").onSnapshot(snap=>{
     expenses=snap.docs.map(norm).filter(e=>e.date&&e.amount>0);
     if(!snap.metadata.fromCache){gotData=true;clearTimeout(timer)}
-    $("status").textContent=expenses.length?`${expenses.length} expenses · entered in CHF, shown in USD`:"No expenses yet. Add your first one.";
+    $("status").textContent=expenses.length?`${expenses.length} expenses logged`:"No expenses yet. Add your first one.";
     render();
   },()=>{clearTimeout(timer);$("status").textContent="Couldn't load your expenses right now. Reopen the page to try again."});
-  db.doc("settings/main").onSnapshot(s=>{if(s.exists){const d=s.data();settings={rate:+d.rate||DEF.rate,cap:d.cap??DEF.cap,ext:d.ext??DEF.ext,wcapChf:d.wcapChf??DEF.wcapChf};fillSettings();render()}},()=>{});
+  db.doc("settings/main").onSnapshot(s=>{if(s.exists){const d=s.data();settings={rate:+d.rate||DEF.rate,eurRate:+d.eurRate||DEF.eurRate,cap:d.cap??DEF.cap,ext:d.ext??DEF.ext,wcapChf:d.wcapChf??DEF.wcapChf};fillSettings();render()}},()=>{});
 }
 
 /* ---------- events ---------- */
@@ -929,23 +944,25 @@ $("f-cat").value="food";
 const hint=()=>{$("f-hint").textContent=CAT[$("f-cat").value].hint};hint();
 $("f-cat").onchange=hint;
 $("f-date").value=iso(today());
-function toUsd(v){return entryCur==="CHF"?v/(+settings.rate||DEF.rate):v}
+function toUsd(v){return v/rateOf(entryCur)}
 function updateConv(){
   const v=parseFloat($("f-amount").value);
-  $("f-conv").textContent=v>0?(entryCur==="CHF"?`${fmtChf(v)} = ${fmt(toUsd(v))} at ${(+settings.rate).toFixed(2)} CHF per $1`:`${fmt(v)} = ${fmtChf(v*settings.rate)}`):`Enter the amount in ${entryCur}. It's converted to USD at ${(+settings.rate).toFixed(2)} CHF per $1.`;
+  const u=toUsd(v);
+  $("f-conv").textContent=v>0?["USD","CHF","EUR"].filter(c=>c!==entryCur).reduce((t,c)=>t+" = "+fmtIn(c,u*rateOf(c)),fmtIn(entryCur,v)):`Enter the amount in ${entryCur}. $1 = CHF ${(+settings.rate).toFixed(2)} = €${(+settings.eurRate).toFixed(2)}.`;
 }
 $("f-amount").oninput=updateConv;
-function setCur(c){entryCur=c;$("cur-chf").setAttribute("aria-pressed",c==="CHF");$("cur-usd").setAttribute("aria-pressed",c==="USD");updateConv()}
-$("cur-chf").onclick=()=>setCur("CHF");$("cur-usd").onclick=()=>setCur("USD");
+function setCur(c){entryCur=c;$("cur-chf").setAttribute("aria-pressed",c==="CHF");$("cur-usd").setAttribute("aria-pressed",c==="USD");$("cur-eur").setAttribute("aria-pressed",c==="EUR");updateConv()}
+$("cur-chf").onclick=()=>setCur("CHF");$("cur-usd").onclick=()=>setCur("USD");$("cur-eur").onclick=()=>setCur("EUR");
+$("dispcur").onclick=e=>{const b=e.target.closest("button");if(!b)return;dispCur=b.dataset.c;try{localStorage.setItem("sultan-dispcur",dispCur)}catch(x){}render();updateConv()};
 $("form").addEventListener("submit",async ev=>{
   ev.preventDefault();
   const raw=Math.round(parseFloat($("f-amount").value)*100)/100;
   if(!(raw>0)){$("f-msg").className="msg full err";$("f-msg").textContent="Enter an amount above zero.";return}
-  const e={amount:Math.round(toUsd(raw)*100)/100,orig:{amount:raw,currency:entryCur,rate:+settings.rate},category:$("f-cat").value,date:$("f-date").value||iso(today()),note:$("f-note").value.trim(),createdAt:new Date().toISOString()};
+  const e={amount:Math.round(toUsd(raw)*100)/100,orig:{amount:raw,currency:entryCur,rate:rateOf(entryCur)},category:$("f-cat").value,date:$("f-date").value||iso(today()),note:$("f-note").value.trim(),createdAt:new Date().toISOString()};
   $("f-submit").disabled=true;
   try{
     await addExpense(e);
-    $("f-msg").className="msg full ok";$("f-msg").textContent=`Added ${entryCur==="CHF"?fmtChf(raw)+" ("+fmt(e.amount)+")":fmt(raw)} to ${cname(e.category)}.`;
+    $("f-msg").className="msg full ok";$("f-msg").textContent=`Added ${fmtIn(entryCur,raw)}${entryCur!=="USD"?" ("+fmtUsd(e.amount)+")":""} to ${cname(e.category)}.`;
     $("f-amount").value="";$("f-note").value="";updateConv();$("f-amount").focus();
     const d=parse(e.date),r=range(mode,anchor);if(mode!=="day"&&(d<r.start||d>=r.end)){anchor=d;render()}
   }catch(err){$("f-msg").className="msg full err";$("f-msg").textContent=err&&err.code==="invalid_argument"?"You don't have permission to add expenses here.":"Couldn't save that expense. Check your connection and try again."}
@@ -971,10 +988,10 @@ $("next").onclick=()=>{anchor=shift(mode,anchor,1);showAll=false;render()};
 $("lf").onchange=()=>{catFilter=$("lf").value;showAll=false;render()};
 $("more").onclick=()=>{showAll=true;render()};
 let st;
-["s-rate","s-cap","s-ext","s-wcap"].forEach(id=>$(id).addEventListener("input",()=>{clearTimeout(st);st=setTimeout(async()=>{
-  const rate=parseFloat($("s-rate").value),cap=parseFloat($("s-cap").value),ext=parseFloat($("s-ext").value),wcapChf=parseFloat($("s-wcap").value)||0;
-  if(!(rate>0)||!(cap>=0)||!(ext>=0)){$("s-msg").className="msg err";$("s-msg").textContent="Enter a rate above zero and budgets of zero or more.";return}
-  settings={rate,cap,ext,wcapChf};updateConv();render();
+["s-rate","s-eur","s-cap","s-ext","s-wcap"].forEach(id=>$(id).addEventListener("input",()=>{clearTimeout(st);st=setTimeout(async()=>{
+  const rate=parseFloat($("s-rate").value),cap=parseFloat($("s-cap").value),ext=parseFloat($("s-ext").value),wcapChf=parseFloat($("s-wcap").value)||0,eurRate=parseFloat($("s-eur").value);
+  if(!(rate>0)||!(eurRate>0)||!(cap>=0)||!(ext>=0)){$("s-msg").className="msg err";$("s-msg").textContent="Enter a rate above zero and budgets of zero or more.";return}
+  settings={rate,eurRate,cap,ext,wcapChf};updateConv();render();
   try{await saveSettings();$("s-msg").className="msg ok";$("s-msg").textContent="Saved."}catch(e){$("s-msg").className="msg err";$("s-msg").textContent="Couldn't save settings."}
 },700)}));
 
