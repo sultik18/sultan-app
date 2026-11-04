@@ -513,6 +513,7 @@ html:root[data-ui="dark"]{--bg:#0f151b; --surface:#17202a; --ink:#e6edf3; --mute
     </div>
     <div class="controls">
       <div class="seg" role="group" aria-label="Summary period">
+        <button id="m-day" aria-pressed="false">Daily</button>
         <button id="m-week" aria-pressed="false">Weekly</button>
         <button id="m-month" aria-pressed="true">Monthly</button>
       </div>
@@ -535,7 +536,7 @@ html:root[data-ui="dark"]{--bg:#0f151b; --surface:#17202a; --ink:#e6edf3; --mute
         <div class="panel-head"><h2 id="sumh">Summary</h2><span id="spill"></span></div>
         <div class="hero">
           <div class="stat big"><span class="eyebrow">Total spent</span><span class="v" id="s-total">—</span><span class="d" id="s-cmp"></span></div>
-          <div class="stat"><span class="eyebrow">Per day</span><span class="v" id="s-avg">—</span><span class="d" id="s-avgd"></span></div>
+          <div class="stat"><span class="eyebrow" id="s-avgk">Per day</span><span class="v" id="s-avg">—</span><span class="d" id="s-avgd"></span></div>
           <div class="stat"><span class="eyebrow">Expenses</span><span class="v" id="s-count">—</span><span class="d" id="s-countd"></span></div>
           <div class="stat"><span class="eyebrow">Top category</span><span class="v" id="s-top" style="font-family:var(--f-body);font-size:17px">—</span><span class="d" id="s-topd"></span></div>
         </div>
@@ -683,13 +684,15 @@ function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"
 function parse(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function range(m,a){
+  if(m==="day"){const s=new Date(a.getFullYear(),a.getMonth(),a.getDate());return{start:s,end:addDays(s,1)}}
   if(m==="week"){const s=addDays(a,-((a.getDay()+6)%7));return{start:s,end:addDays(s,7)}}
   return{start:new Date(a.getFullYear(),a.getMonth(),1),end:new Date(a.getFullYear(),a.getMonth()+1,1)}}
-function shift(m,a,n){if(m==="week")return addDays(a,7*n);return new Date(a.getFullYear(),a.getMonth()+n,1)}
+function shift(m,a,n){if(m==="day")return addDays(a,n);if(m==="week")return addDays(a,7*n);return new Date(a.getFullYear(),a.getMonth()+n,1)}
 const dayCount=r=>Math.round((r.end-r.start)/864e5);
 const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DOW=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 function label(m,r,short){
+  if(m==="day"){const t=today(),s=r.start.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});return short?r.start.getDate()+" "+MON[r.start.getMonth()]:(+r.start===+t?"Today · "+s:s)}
   if(m==="month")return short?MON[r.start.getMonth()]:r.start.toLocaleDateString("en-US",{month:"long",year:"numeric"});
   const e=addDays(r.end,-1);
   if(short)return r.start.getDate()+" "+MON[r.start.getMonth()];
@@ -736,21 +739,29 @@ function render(){
   const prev=inRange(cmpR);
   const total=sum(cur), ptotal=sum(prev), B=budgets(mode), st=status(total,B);
   const proj=project(cur,r,elapsed,isCurrent), pst=status(proj,B);
-  $("m-week").setAttribute("aria-pressed",mode==="week");$("m-month").setAttribute("aria-pressed",mode==="month");
+  const D=mode==="day";
+  $("m-day").setAttribute("aria-pressed",D);$("m-week").setAttribute("aria-pressed",mode==="week");$("m-month").setAttribute("aria-pressed",mode==="month");
+  // daily view: today only, no caps, no analysis
+  $("plabel").parentElement.hidden=false;$("prev").hidden=D;$("next").hidden=D;
+  document.querySelector("#sumpanel .budgets").hidden=D;
+  ["hih","trh","inh","cath"].forEach(id=>{const sec=$(id).closest("section");if(sec)sec.hidden=D});
+  $("ledh").textContent=D?"Today's expenses":"Expenses this period";
   $("plabel").textContent=label(mode,r);
   $("next").disabled=isCurrent||isFuture;
   $("exbanner").hidden=!expenses.some(e=>e.example);
   $("ratelbl").textContent=`${(+settings.rate).toFixed(2)} CHF = $1`;
 
   // summary
-  $("sumpanel").className="panel sumpanel s-"+st;
-  $("spill").innerHTML=`<span class="pill">${STXT[st]}</span>`;
-  const word=(isCurrent?"same point ":"")+(mode==="week"?"last week":"last month");
+  $("sumpanel").className="panel sumpanel"+(D?"":" s-"+st);
+  $("spill").innerHTML=D?"":`<span class="pill">${STXT[st]}</span>`;
+  const word=D?"yesterday":(isCurrent?"same point ":"")+(mode==="week"?"last week":"last month");
   $("s-total").textContent=fmt(total);
   $("s-cmp").innerHTML=ptotal||total?`${chip(pct(total,ptotal))} vs ${word} (${esc(fmt(ptotal,0))})`:"";
   const avg=elapsed?total/elapsed:0;
   $("s-avg").textContent=fmt(avg);
   $("s-avgd").textContent=isCurrent?`${elapsed} of ${dayCount(r)} days so far`:`over ${dayCount(r)} days`;
+  $("s-avgk").textContent=D?"Biggest expense":"Per day";
+  if(D){const big=cur.length?cur.reduce((a,b)=>b.amount>a.amount?b:a):null;$("s-avg").textContent=big?fmt(big.amount):"—";$("s-avgd").textContent=big?(big.note||cname(big.category)):"Nothing yet today"}
   $("s-count").textContent=cur.length;
   $("s-countd").textContent=cur.length?`avg ${fmt(total/cur.length)} each`:"none yet";
   const cm=byCat(cur), pcm=byCat(prev);
@@ -936,7 +947,7 @@ $("form").addEventListener("submit",async ev=>{
     await addExpense(e);
     $("f-msg").className="msg full ok";$("f-msg").textContent=`Added ${entryCur==="CHF"?fmtChf(raw)+" ("+fmt(e.amount)+")":fmt(raw)} to ${cname(e.category)}.`;
     $("f-amount").value="";$("f-note").value="";updateConv();$("f-amount").focus();
-    const d=parse(e.date),r=range(mode,anchor);if(d<r.start||d>=r.end){anchor=d;render()}
+    const d=parse(e.date),r=range(mode,anchor);if(mode!=="day"&&(d<r.start||d>=r.end)){anchor=d;render()}
   }catch(err){$("f-msg").className="msg full err";$("f-msg").textContent=err&&err.code==="invalid_argument"?"You don't have permission to add expenses here.":"Couldn't save that expense. Check your connection and try again."}
   $("f-submit").disabled=false;
 });
@@ -952,6 +963,7 @@ $("clearEx").addEventListener("click",async()=>{
   for(const e of expenses.filter(x=>x.example)){try{await delExpense(e.id)}catch(err){}}
   btn.disabled=false;btn.dataset.armed="";btn.textContent="Remove examples";
 });
+$("m-day").onclick=()=>{mode="day";anchor=today();showAll=false;render()};
 $("m-week").onclick=()=>{mode="week";anchor=today();showAll=false;render()};
 $("m-month").onclick=()=>{mode="month";anchor=today();showAll=false;render()};
 $("prev").onclick=()=>{anchor=shift(mode,anchor,-1);showAll=false;render()};
