@@ -404,8 +404,8 @@ details.settings .body{display:grid;grid-template-columns:1fr 1fr;gap:10px;margi
 .chat-h b{display:inline-flex;align-items:center;gap:8px;font-size:15px}
 .chat-h b .spark{width:26px;height:26px;border-radius:8px}
 .chat-h b .spark svg{width:14px;height:14px}
-.msgs{padding:8px 22px 8px;display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto}
-.msg{max-width:88%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
+.msgs{padding:8px 22px 8px;display:flex;flex-direction:column;gap:12px;max-height:min(70vh,760px);overflow-y:auto}
+.msg{flex-shrink:0;max-width:88%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
 .msg.u{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--t-purple));color:#fff;border-bottom-right-radius:6px;white-space:pre-wrap}
 .msg.a{align-self:flex-start;background:var(--grouped);border-bottom-left-radius:6px}
 .msg.a p{margin:0 0 8px}.msg.a p:last-child{margin:0}
